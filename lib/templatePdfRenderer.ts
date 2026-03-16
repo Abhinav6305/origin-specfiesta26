@@ -65,7 +65,7 @@ const defaultLayoutConfigs: Record<PlaceholderKey, LayoutConfig> = {
   'Roll No': {
     width: 120,
     height: 20,
-    leftOffset: -4,
+    leftOffset: -10,
     topOffset: 4,
     minFontSize: 10,
     wrap: false,

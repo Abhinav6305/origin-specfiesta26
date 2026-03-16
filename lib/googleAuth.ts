@@ -19,15 +19,38 @@ function parseServiceAccountKey(rawKey: string): ServiceAccountKey {
     typeof parsed.client_email === 'string'
       ? parsed.client_email.replace(/^\[([^\]]+)\]\(mailto:[^)]+\)$/i, '$1').trim()
       : '';
+  const normalizedPrivateKey =
+    typeof parsed.private_key === 'string'
+      ? parsed.private_key.replace(/\\n/g, '\n').replace(/\r\n/g, '\n').trim()
+      : '';
 
-  if (!normalizedClientEmail || !parsed.private_key) {
+  if (!normalizedClientEmail || !normalizedPrivateKey) {
     throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY is missing client_email or private_key');
+  }
+
+  if (
+    cleaned.includes('YOUR_PRIVATE_KEY_HERE') ||
+    cleaned.includes('your-project-id') ||
+    cleaned.includes('your-service-account@')
+  ) {
+    throw new Error(
+      'GOOGLE_SERVICE_ACCOUNT_KEY is still using sample placeholder values. Paste the real Google service account JSON into the environment variable.'
+    );
+  }
+
+  if (
+    !normalizedPrivateKey.includes('-----BEGIN PRIVATE KEY-----') ||
+    !normalizedPrivateKey.includes('-----END PRIVATE KEY-----')
+  ) {
+    throw new Error(
+      'GOOGLE_SERVICE_ACCOUNT_KEY contains an invalid private key. Paste the full real service-account JSON from Google Cloud.'
+    );
   }
 
   return {
     type: 'service_account',
     client_email: normalizedClientEmail,
-    private_key: parsed.private_key.replace(/\\n/g, '\n').trim(),
+    private_key: normalizedPrivateKey,
     project_id: parsed.project_id,
   };
 }

@@ -16,6 +16,8 @@ type TemplateAssets = {
   backgroundBytes: Uint8Array
   backgroundWidth: number
   backgroundHeight: number
+  slideWidth: number
+  slideHeight: number
   placeholders: Record<PlaceholderKey, BoxRect>
 }
 
@@ -42,34 +44,113 @@ const templateCache = new Map<
   }
 >()
 
-type LayoutAdjustment = {
-  left?: number
-  top?: number
-  width?: number
-  height?: number
+type LayoutConfig = {
+  width: number
+  height: number
+  leftOffset: number
+  topOffset: number
   minFontSize?: number
+  wrap?: boolean
 }
 
-const defaultAdjustments: Partial<Record<PlaceholderKey, LayoutAdjustment>> = {
-  'Roll No': { top: 4 },
-  Branch: { top: 4 },
+const defaultLayoutConfigs: Record<PlaceholderKey, LayoutConfig> = {
+  Name: {
+    width: 165,
+    height: 22,
+    leftOffset: 0,
+    topOffset: 0,
+    minFontSize: 10,
+    wrap: false,
+  },
+  'Roll No': {
+    width: 120,
+    height: 20,
+    leftOffset: -4,
+    topOffset: 4,
+    minFontSize: 10,
+    wrap: false,
+  },
+  Year: {
+    width: 60,
+    height: 20,
+    leftOffset: -4,
+    topOffset: 0,
+    minFontSize: 10,
+    wrap: false,
+  },
+  Branch: {
+    width: 95,
+    height: 20,
+    leftOffset: -4,
+    topOffset: 4,
+    minFontSize: 10,
+    wrap: false,
+  },
+  College: {
+    width: 180,
+    height: 32,
+    leftOffset: 20,
+    topOffset: 0,
+    minFontSize: 9,
+    wrap: false,
+  },
 }
 
-const eventAdjustments: Record<string, Partial<Record<PlaceholderKey, LayoutAdjustment>>> = {
+const eventLayoutOverrides: Record<string, Partial<Record<PlaceholderKey, Partial<LayoutConfig>>>> = {
   'code-chaos': {
-    'Roll No': { top: 5 },
-    Branch: { top: 5 },
+    'Roll No': { topOffset: 5 },
+    Branch: { topOffset: 5 },
+    College: {
+      width: 195,
+      height: 34,
+      leftOffset: 18,
+      topOffset: 0,
+      minFontSize: 8,
+    },
   },
   'frame-fusion': {
-    'Roll No': { top: 5 },
-    Branch: { top: 5 },
+    'Roll No': { topOffset: 5 },
+    Branch: { topOffset: 5 },
+    College: {
+      width: 195,
+      height: 34,
+      leftOffset: 18,
+      topOffset: 0,
+      minFontSize: 8,
+    },
   },
   'hack-relay': {
-    Name: { left: -8, top: 2, width: -16, height: 2 },
-    'Roll No': { left: -8, top: 8, width: -10, height: -2 },
-    Year: { left: -2, top: 6, width: -8, height: -2 },
-    Branch: { left: -4, top: 9, width: -14, height: -2 },
-    College: { left: 8, top: 7, width: -24, height: -2, minFontSize: 9 },
+    Name: {
+      width: 155,
+      height: 20,
+      leftOffset: -8,
+      topOffset: 2,
+    },
+    'Roll No': {
+      width: 110,
+      height: 18,
+      leftOffset: -8,
+      topOffset: 8,
+    },
+    Year: {
+      width: 48,
+      height: 18,
+      leftOffset: -2,
+      topOffset: 6,
+    },
+    Branch: {
+      width: 82,
+      height: 18,
+      leftOffset: -4,
+      topOffset: 9,
+    },
+    College: {
+      width: 205,
+      height: 24,
+      leftOffset: 8,
+      topOffset: 7,
+      minFontSize: 9,
+    },
   },
 }
 
@@ -85,23 +166,6 @@ function getCachedTemplate(templateId: string) {
   }
 
   return cached.assets
-}
-
-function buildBoxRect(
-  imageRect: BoxRect,
-  shapeRect: BoxRect,
-  imageWidth: number,
-  imageHeight: number
-): BoxRect {
-  const xRatio = imageWidth / imageRect.width
-  const yRatio = imageHeight / imageRect.height
-
-  return {
-    left: (shapeRect.left - imageRect.left) * xRatio,
-    top: (shapeRect.top - imageRect.top) * yRatio,
-    width: shapeRect.width * xRatio,
-    height: shapeRect.height * yRatio,
-  }
 }
 
 function toPoints(valueInEmu: number) {
@@ -168,31 +232,7 @@ function parseTemplateAssetsFromPptx(pptxBuffer: Buffer) {
       throw new Error('Unable to read slide width and height from template')
     }
 
-    const pictureMatch = slideXml.match(
-      /<p:pic>[\s\S]*?<a:off x="(\d+)" y="(\d+)"\/><a:ext cx="(\d+)" cy="(\d+)"\/>[\s\S]*?<\/p:pic>/
-    )
-
-    if (!pictureMatch) {
-      throw new Error('Unable to read background image placement from template')
-    }
-
-    const imageRect: BoxRect = {
-      left: toPoints(Number(pictureMatch[1])),
-      top: toPoints(Number(pictureMatch[2])),
-      width: toPoints(Number(pictureMatch[3])),
-      height: toPoints(Number(pictureMatch[4])),
-    }
-
     const pngDimensions = readPngDimensions(backgroundBytes)
-    const imageAspectRatio = pngDimensions.width / pngDimensions.height
-    const pageAspectRatio = A4_LANDSCAPE_WIDTH / A4_LANDSCAPE_HEIGHT
-    const imageWidth = Math.round(
-      pageAspectRatio > imageAspectRatio
-        ? A4_LANDSCAPE_HEIGHT * imageAspectRatio
-        : A4_LANDSCAPE_WIDTH
-    )
-    const imageHeight = Math.round(imageWidth / imageAspectRatio)
-
     const placeholders = {} as Record<PlaceholderKey, BoxRect>
     const shapeMatches = slideXml.match(/<p:sp>[\s\S]*?<\/p:sp>/g) || []
 
@@ -214,12 +254,7 @@ function parseTemplateAssetsFromPptx(pptxBuffer: Buffer) {
         height: toPoints(Number(offsetMatch[4])),
       }
 
-      placeholders[text as PlaceholderKey] = buildBoxRect(
-        imageRect,
-        shapeRect,
-        imageWidth,
-        imageHeight
-      )
+      placeholders[text as PlaceholderKey] = shapeRect
     }
 
     for (const placeholder of placeholderOrder) {
@@ -232,32 +267,20 @@ function parseTemplateAssetsFromPptx(pptxBuffer: Buffer) {
       backgroundBytes,
       backgroundWidth: pngDimensions.width,
       backgroundHeight: pngDimensions.height,
+      slideWidth,
+      slideHeight,
       placeholders,
     }
   })
 }
 
-function getAdjustedBox(eventId: string, placeholder: PlaceholderKey, box: BoxRect): BoxRect {
-  const adjustment = {
-    ...(defaultAdjustments[placeholder] || {}),
-    ...(eventAdjustments[eventId]?.[placeholder] || {}),
+function getLayoutConfig(eventId: string, placeholder: PlaceholderKey): LayoutConfig {
+  const config = {
+    ...defaultLayoutConfigs[placeholder],
+    ...(eventLayoutOverrides[eventId]?.[placeholder] || {}),
   }
 
-  return {
-    left: box.left + (adjustment.left || 0),
-    top: box.top + (adjustment.top || 0),
-    width: Math.max(20, box.width + (adjustment.width || 0)),
-    height: Math.max(12, box.height + (adjustment.height || 0)),
-  }
-}
-
-function getMinimumFontSize(eventId: string, placeholder: PlaceholderKey) {
-  const adjustment = {
-    ...(defaultAdjustments[placeholder] || {}),
-    ...(eventAdjustments[eventId]?.[placeholder] || {}),
-  }
-
-  return adjustment.minFontSize || 10
+  return config
 }
 
 function fitTextToWidth(
@@ -330,8 +353,8 @@ export async function renderCertificatePdf(params: {
     height: A4_LANDSCAPE_HEIGHT,
   })
 
-  const scaleX = A4_LANDSCAPE_WIDTH / assets.backgroundWidth
-  const scaleY = A4_LANDSCAPE_HEIGHT / assets.backgroundHeight
+  const scaleX = A4_LANDSCAPE_WIDTH / assets.slideWidth
+  const scaleY = A4_LANDSCAPE_HEIGHT / assets.slideHeight
 
   const fieldValues: Record<PlaceholderKey, string> = {
     Name: normalizePdfValue(params.values.name),
@@ -343,7 +366,13 @@ export async function renderCertificatePdf(params: {
 
   for (const placeholder of placeholderOrder) {
     const rawBox = assets.placeholders[placeholder]
-    const adjustedBox = getAdjustedBox(params.eventId, placeholder, rawBox)
+    const layoutConfig = getLayoutConfig(params.eventId, placeholder)
+    const adjustedBox = {
+      left: rawBox.left + layoutConfig.leftOffset,
+      top: rawBox.top + layoutConfig.topOffset,
+      width: layoutConfig.width,
+      height: layoutConfig.height,
+    }
     const box = {
       left: adjustedBox.left * scaleX,
       top: adjustedBox.top * scaleY,
@@ -357,7 +386,7 @@ export async function renderCertificatePdf(params: {
     }
 
     const baseFontSize = Math.max(12, box.height * 0.85)
-    const minFontSize = getMinimumFontSize(params.eventId, placeholder)
+    const minFontSize = layoutConfig.minFontSize || 10
     const fontSize = fitTextToWidth(
       value,
       box.width,

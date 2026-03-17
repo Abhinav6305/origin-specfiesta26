@@ -49,6 +49,7 @@ type LayoutConfig = {
   height: number
   leftOffset: number
   topOffset: number
+  maxFontSize: number
   minFontSize?: number
   wrap?: boolean
 }
@@ -59,7 +60,8 @@ const defaultLayoutConfigs: Record<PlaceholderKey, LayoutConfig> = {
     height: 22,
     leftOffset: 0,
     topOffset: 0,
-    minFontSize: 10,
+    maxFontSize: 12,
+    minFontSize: 9,
     wrap: false,
   },
   'Roll No': {
@@ -67,6 +69,7 @@ const defaultLayoutConfigs: Record<PlaceholderKey, LayoutConfig> = {
     height: 20,
     leftOffset: -24,
     topOffset: 4,
+    maxFontSize: 12,
     minFontSize: 9,
     wrap: false,
   },
@@ -75,7 +78,8 @@ const defaultLayoutConfigs: Record<PlaceholderKey, LayoutConfig> = {
     height: 20,
     leftOffset: -4,
     topOffset: 0,
-    minFontSize: 10,
+    maxFontSize: 12,
+    minFontSize: 9,
     wrap: false,
   },
   Branch: {
@@ -83,7 +87,8 @@ const defaultLayoutConfigs: Record<PlaceholderKey, LayoutConfig> = {
     height: 20,
     leftOffset: -4,
     topOffset: 4,
-    minFontSize: 10,
+    maxFontSize: 12,
+    minFontSize: 9,
     wrap: false,
   },
   College: {
@@ -91,6 +96,7 @@ const defaultLayoutConfigs: Record<PlaceholderKey, LayoutConfig> = {
     height: 32,
     leftOffset: 20,
     topOffset: 0,
+    maxFontSize: 12,
     minFontSize: 9,
     wrap: false,
   },
@@ -105,6 +111,7 @@ const eventLayoutOverrides: Record<string, Partial<Record<PlaceholderKey, Partia
       height: 34,
       leftOffset: 18,
       topOffset: 0,
+      maxFontSize: 12,
       minFontSize: 8,
     },
   },
@@ -116,6 +123,7 @@ const eventLayoutOverrides: Record<string, Partial<Record<PlaceholderKey, Partia
       height: 34,
       leftOffset: 18,
       topOffset: 0,
+      maxFontSize: 12,
       minFontSize: 8,
     },
   },
@@ -125,30 +133,35 @@ const eventLayoutOverrides: Record<string, Partial<Record<PlaceholderKey, Partia
       height: 20,
       leftOffset: -8,
       topOffset: 2,
+      maxFontSize: 12,
     },
     'Roll No': {
       width: 110,
       height: 18,
       leftOffset: -8,
       topOffset: 8,
+      maxFontSize: 12,
     },
     Year: {
       width: 48,
       height: 18,
       leftOffset: -2,
       topOffset: 6,
+      maxFontSize: 12,
     },
     Branch: {
       width: 82,
       height: 18,
       leftOffset: -4,
       topOffset: 9,
+      maxFontSize: 12,
     },
     College: {
       width: 205,
       height: 24,
       leftOffset: 8,
       topOffset: 7,
+      maxFontSize: 12,
       minFontSize: 9,
     },
   },
@@ -385,7 +398,7 @@ export async function renderCertificatePdf(params: {
       continue
     }
 
-    const baseFontSize = Math.max(12, box.height * 0.85)
+    const baseFontSize = Math.min(layoutConfig.maxFontSize, box.height * 0.82)
     const minFontSize = layoutConfig.minFontSize || 10
     const fontSize = fitTextToWidth(
       value,
@@ -399,11 +412,13 @@ export async function renderCertificatePdf(params: {
     const textWidth = font.widthOfTextAtSize(value, fontSize)
     const textHeight = font.heightAtSize(fontSize)
     const x = box.left + Math.max(0, (box.width - textWidth) / 2)
+    const baselineCompensation = fontSize * 0.18
     const y =
       A4_LANDSCAPE_HEIGHT -
       box.top -
       box.height +
-      Math.max(0, (box.height - textHeight) / 2)
+      Math.max(0, (box.height - textHeight) / 2) +
+      baselineCompensation
 
     page.drawText(value, {
       x,
